@@ -1,0 +1,15 @@
+{
+  "name": "pi-dotfiles",
+  "version": "0.1.0",
+  "private": false,
+  "description": "pi agent 自定义配置 package：footer 自定义扩展 + pi-hacks 改造索引 skill",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"]
+  },
+  "dependencies": {
+    "js-tiktoken": "^1.0.19"
+  }
+}
