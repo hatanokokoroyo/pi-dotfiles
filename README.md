@@ -20,12 +20,13 @@ pi-dotfiles/
 ## 安装（新终端）
 
 ```bash
-# 1. 安装 package 资源（扩展、skills），依赖自动 npm install
-pi install git:github.com/hatanokokoroyo/pi-dotfiles
-
-# 2. 同步非 package 文件（AGENTS.md、settings.json）
+# 1. 同步非 package 文件（AGENTS.md、settings.json）——注意顺序：先 sync 再 install，
+#    因为 pi install 会向现有 settings.json 追加 packages 字段，后执行不会被覆盖
 git clone git@github.com:hatanokokoroyo/pi-dotfiles.git ~/pi-dotfiles
 ~/pi-dotfiles/sync.sh
+
+# 2. 安装 package 资源（扩展、skills），依赖自动 npm install
+pi install git:github.com/hatanokokoroyo/pi-dotfiles
 
 # 3. /reload 或重启 pi 生效
 ```
@@ -41,6 +42,8 @@ cd ~/pi-dotfiles && git pull && ./sync.sh
 ```
 
 ## 说明与注意事项
+
+- `settings.json` 会覆盖目标终端现有全局设置（theme / defaultProvider / defaultModel / thinking）；若目标终端另有其他已安装 package，sync 后再执行 `pi install` 追加 packages 字段即可保留。
 
 - `settings.json` 同步后，新终端需自行配置对应 provider 凭据（`auth.json` / 环境变量），模型相关文件不入库。
 - **不入库（机器相关）**：`~/.pi/agent/auth.json`、`models-store.json`、`trust.json`、`footer-state.json`、`sessions/`、`npm/`（包依赖，由 `pi update` 自动重装）。
