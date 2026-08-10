@@ -37,13 +37,24 @@ pi install git:github.com/hatanokokoroyo/pi-dotfiles
 # package 资源更新：修改并 push 到 GitHub 后，各终端拉取
 pi update --extensions
 
-# 非 package 文件更新
+# 非 package 文件更新（AGENTS.md、settings.json 合并式同步，保留本地 packages 字段）
 cd ~/pi-dotfiles && git pull && ./sync.sh
 ```
 
-## 说明与注意事项
+## 同步与 git 提交身份
 
-- `settings.json` 会覆盖目标终端现有全局设置（theme / defaultProvider / defaultModel / thinking）；若目标终端另有其他已安装 package，sync 后再执行 `pi install` 追加 packages 字段即可保留。
+- 所有改动在 `~/pi-dotfiles/` 工作副本完成，commit + push 到 GitHub 后各终端同步。
+- **提交身份约定**：本仓库已配置 local 身份 `hatanokokoro <hatanokokoroyo@gmail.com>`；其他终端 clone 后如未继承（`git config user.name` 为空或非预期），手动配置：
+
+```bash
+cd ~/pi-dotfiles
+git config user.name "hatanokokoro"
+git config user.email "hatanokokoroyo@gmail.com"
+```
+
+- `sync.sh` 对 `settings.json` 采用合并策略：仓库值优先（theme / defaultProvider 等），保留目标端已有字段（如 `packages`），不会覆盖 `pi install` 写入的包引用。
+
+## 说明与注意事项
 
 - `settings.json` 同步后，新终端需自行配置对应 provider 凭据（`auth.json` / 环境变量），模型相关文件不入库。
 - **不入库（机器相关）**：`~/.pi/agent/auth.json`、`models-store.json`、`trust.json`、`footer-state.json`、`sessions/`、`npm/`（包依赖，由 `pi update` 自动重装）。

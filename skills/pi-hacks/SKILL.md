@@ -18,8 +18,8 @@ description: pi agent 自身的自定义与改造知识索引（footer 显示、
 ## 使用方式
 
 1. 从上方索引找到对应改造项，读取其文档获取完整知识（结论速览 / 实现细节 / 数据源 / 修改点 / 注意事项）。文档即本目录下的同名 Markdown 文件。
-2. 修改已有扩展后执行 `/reload` 验证。
-3. 扩展文件统一放 `~/.pi/agent/extensions/`；全局生效，与项目无关的改造不要放进项目仓库。
+2. 修改已有扩展后执行 `/reload` 验证；源码改动提交到 pi-dotfiles 仓库并 push（提交身份 `hatanokokoro <hatanokokoroyo@gmail.com>`），各终端 `pi update --extensions` 同步。
+3. 扩展统一由 pi-dotfiles package 管理（仓库 `extensions/` 目录）；全局生效，与项目无关的改造不要放进项目仓库（`.pi/extensions/` 仅临时/项目级用）。
 
 ## 登记新改造
 

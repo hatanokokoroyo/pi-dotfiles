@@ -21,7 +21,7 @@
 
 ### 扩展文件
 
-`~/.pi/agent/extensions/footer-custom.ts`（全局，所有项目生效；也可放项目 `.pi/extensions/`）
+源码在 pi-dotfiles 仓库 `extensions/footer-custom.ts`（pi package 资源，全局生效）：通过 `pi install git:github.com/hatanokokoroyo/pi-dotfiles` 安装后，实际加载路径为 `~/.pi/agent/git/github.com/hatanokokoroyo/pi-dotfiles/extensions/footer-custom.ts`；开发时改 `~/pi-dotfiles/extensions/footer-custom.ts` 工作副本，push 后各终端 `pi update --extensions` 同步。也可临时放项目 `.pi/extensions/`（项目级）。
 
 - 命令 `/footer`：切换 人民币/美元/恢复默认 footer（`/footer cny|usd|off`），tok 速率开关（`/footer tok [on|off]`）
 - 汇率：`PI_CNY_RATE` 环境变量覆盖，默认 7.15
@@ -31,14 +31,14 @@
 
 在默认 footer 复刻基础上，AI 流式输出期间显示 `N tok/s`（位于 ↓output 之后）。
 
-**实现**（`~/.pi/agent/extensions/footer-custom.ts`，`/footer tok on|off` 开关，默认开启）：
+**实现**（`extensions/footer-custom.ts`，`/footer tok on|off` 开关，默认开启）：
 
 1. **事件源**：`pi.on("message_update")`（在扩展加载时注册一次，与 footer 模式无关）——流式过程中逐 chunk 触发，`event.assistantMessageEvent.delta` 携带 text/thinking/toolcall 的增量文本（text_delta / thinking_delta / toolcall_delta 均计入）。回复边界用 `message_start` / `message_end`（仅 assistant role）界定：开始记录起点，结束结算本次平均速率。
 2. **token 换算**：优先 `js-tiktoken` 的 `o200k_base` BPE 编码（与 DeepSeek-V3 官方 tokenizer 同族、128k vocab，普通文本误差 <1%）；依赖缺失时回退字符估算 `chars/4`（`PI_TOK_CHARS_PER_TOKEN` 可覆盖）。增量编码逐 delta 独立计数累加，跨 chunk 边界合并误差对速率显示可忽略。
 3. **速率计算**：维护 `(performance.now, 累计token)` 采样序列（保留 10s / 上限 200），render() 时按 2s 滑动窗口 `(Δtoken)/(Δt)` 计算，四舍五入取整显示。不足两个采样或速率 ≤0 时不显示；流停止后窗口自然过期（约 2s）消失，无需 agent_start/end 边界管理。
 4. **avg 平均速度（变体）**：流式中显示瞬时 tok/s；`message_end` 结算本次回复 `(结束token-起始token)/(结束时间-起始时间)`，结束后立即切换为 `avg N tok/s` 展示 3s（TOK_AVG_TTL_MS）后消失；无 delta 的回复不显示；新回复 `message_start` 清除旧 avg。瞬时与 avg 无缝衔接不重叠。
 5. **触发重绘**：`message_update` 时调 `tui.requestRender()`（TUI 合并+节流，安全）；流式期间 TUI 本身每 chunk 也重绘，此为双保险。`tui` 从 setFooter factory 参数存入模块级变量。
-**依赖**：`~/.pi/agent/extensions/package.json` + `node_modules/js-tiktoken`（文档约定：扩展目录 `npm install` 后 import 自动解析）。
+**依赖**：包根 `package.json` 的 `dependencies`（`js-tiktoken`），`pi install` 安装 git/npm 源时自动 `npm install`；早期直接文件方式（`~/.pi/agent/extensions/` 下独立 `package.json` + 手动 npm install）已废弃。
 
 ### 初始化与状态持久化（方案 B）
 
@@ -96,7 +96,7 @@ cd <pi安装目录>/node_modules/@earendil-works/pi-coding-agent
 NODE_PATH=$PWD/node_modules node -e "
 const { createJiti } = require('jiti');
 const jiti = createJiti(process.cwd() + '/', { interopDefault: true });
-const mod = jiti('~/.pi/agent/extensions/footer-custom.ts');
+const mod = jiti('~/pi-dotfiles/extensions/footer-custom.ts');
 // 构造 mockPi(mock registerCommand) → 触发 handler 拿到 setFooter 的 factory
 // 构造 mock ctx (cwd/sessionManager/model/thinkingLevel/getContextUsage) + mock theme/footerData
 // 调 factory() 拿 component，再 component.render(width) 断言输出
@@ -132,7 +132,7 @@ const mod = jiti('~/.pi/agent/extensions/footer-custom.ts');
 - **pi 升级后检查**：`components/footer.js` 渲染逻辑若变，复刻版要同步；先 diff 新旧 footer.js 再决定。文档开头记录了版本号 0.84.1。
 - setFooter(undefined) 可恢复默认 footer（`/footer off`）。
 - 不要用 `getBranch()` 代替 `getEntries()` 统计费用（会漏数，与默认 footer 不一致）。
-- 扩展是全局的，修改后 `/reload` 生效。
+- 扩展是全局的，修改后 `/reload` 生效；源码改动提交到 pi-dotfiles 仓库并 push，各终端 `pi update --extensions` 同步。
 - **初始化时机**：自定义 footer 在 `session_start`（启动/会话切换/reload）时自动应用，无需手动命令；`setMode(ctx, mode, { silent: true })` 静默，不弹通知。
 - **状态文件**：`~/.pi/agent/footer-state.json`（mode + tokEnabled）属用户偏好，无敏感信息、不入库；`PI_FOOTER_STATE` 可覆盖路径（测试/多机同步）。
 - tok/s 为近似口径：依赖 js-tiktoken 的 o200k_base 近似 DeepSeek-V3 tokenizer（中文/混合内容与官方 usage 可能有少量偏差）；若需严格对齐 API 计费，可换官方 `tokenizer.json`（`@huggingface/tokenizers` WASM 加载，7.8MB 资产）。
