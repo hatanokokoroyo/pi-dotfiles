@@ -25,8 +25,8 @@
  * 汇率: 默认 7.15（美元→人民币），可用环境变量 PI_CNY_RATE 覆盖，
  *       例如 PI_CNY_RATE=7.2 pi
  *
- * 安装: 复制到 ~/.pi/agent/extensions/（全局，所有项目生效）
- *       或 .pi/extensions/（项目级），然后 /reload 或重启 pi
+ * 安装: 由 pi-dotfiles package 管理（local path 安装于 ~/.pi/pi-dotfiles/），
+ *       全局生效；修改后 /reload 或重启 pi 生效
  *
  * 初始化: 扩展在 session_start 事件（启动 / 会话切换 / /reload 均触发）时
  *         自动应用自定义 footer，无需手动执行命令；模式与 tok 开关持久化到

@@ -7,7 +7,7 @@ description: pi agent 自身的自定义与改造知识索引（footer 显示、
 
 本 skill 是"pi 自身改造"的统一入口。所有对 pi agent 的元层自定义（不是用 pi 做业务任务，而是改 pi 本身）都在此登记。
 
-> 本文档与各改造项文档位于同一目录（package 内 `skills/pi-hacks/`），引用一律使用相对路径；本机安装后对应 `~/.pi/agent/skills/pi-hacks/`（直接文件方式）或 pi package 的 `skills/pi-hacks/`（package 安装方式）。
+> 本文档与各改造项文档位于同一目录（package 内 `skills/pi-hacks/`），引用一律使用相对路径；本机以 local path 方式安装，对应 `~/.pi/pi-dotfiles/skills/pi-hacks/`（工作副本即包源）。
 
 ## 改造索引
 
@@ -18,16 +18,23 @@ description: pi agent 自身的自定义与改造知识索引（footer 显示、
 ## 使用方式
 
 1. 从上方索引找到对应改造项，读取其文档获取完整知识（结论速览 / 实现细节 / 数据源 / 修改点 / 注意事项）。文档即本目录下的同名 Markdown 文件。
-2. 修改已有扩展后执行 `/reload` 验证；源码改动提交到 pi-dotfiles 仓库并 push（提交身份 `hatanokokoro <hatanokokoroyo@gmail.com>`），各终端 `pi update --extensions` 同步。
+2. 修改已有扩展后执行 `/reload` 验证（skill 改动下个会话自动读盘）；源码改动提交到 pi-dotfiles 仓库并 push（提交身份 `hatanokokoro <hatanokokoroyo@gmail.com>`），各终端 `git pull` 同步。
 3. 扩展统一由 pi-dotfiles package 管理（仓库 `extensions/` 目录）；全局生效，与项目无关的改造不要放进项目仓库（`.pi/extensions/` 仅临时/项目级用）。
+
+## 同步机制
+
+- pi-dotfiles 以 **local path** 方式安装（`pi install ~/.pi/pi-dotfiles`），工作副本即包源，pi 不维护第二份克隆；`pi update --extensions` 对该包无操作。
+- 改动流程：改 `~/.pi/pi-dotfiles/` → 扩展 `/reload`（skill 下个会话）验证 → commit + push → 其他终端 `cd ~/.pi/pi-dotfiles && git pull` 同步（扩展改动需 `/reload`）。
+- 依赖（js-tiktoken）在 `~/.pi/pi-dotfiles/node_modules`，package.json 变更后需手动 `npm install`。
+- `AGENTS.md`（`~/.pi/agent/AGENTS.md`）与 `settings.json` 不入库，各终端自维护；机器相关文件不入库。
 
 ## 登记新改造
 
 新增对 pi 的改造时，按以下流程（保持 skill 数量不变，列表不膨胀）：
 
-1. 在本目录（skill 目录，package 内 `skills/pi-hacks/`）新建 `<改造项>.md`，参照既有文档结构：结论速览 → 背景 → 实现（含数据源/源码位置）→ 验证 → 修改点 → 注意事项；开头记录 pi 版本号。改动后 push 到 pi-dotfiles 仓库，各终端 `pi update --extensions` 同步。
+1. 在本目录（skill 目录，package 内 `skills/pi-hacks/`）新建 `<改造项>.md`，参照既有文档结构：结论速览 → 背景 → 实现（含数据源/源码位置）→ 验证 → 修改点 → 注意事项；开头记录 pi 版本号。改动后 push 到 pi-dotfiles 仓库，各终端 `git pull` 同步。
 2. 在本文件索引表追加一行（改造项 | 触发场景 | 文档 | 状态）。
-3. 若改动影响会话行为，同步检查 `~/.pi/agent/AGENTS.md` 是否需要更新总览。
+3. 若改动影响会话行为，同步检查本机 `~/.pi/agent/AGENTS.md` 是否需要更新总览（该文件每终端自维护、不入库）。
 
 ## 原则
 

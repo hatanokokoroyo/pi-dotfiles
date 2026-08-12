@@ -96,7 +96,7 @@ cd <pi安装目录>/node_modules/@earendil-works/pi-coding-agent
 NODE_PATH=$PWD/node_modules node -e "
 const { createJiti } = require('jiti');
 const jiti = createJiti(process.cwd() + '/', { interopDefault: true });
-const mod = jiti('~/pi-dotfiles/extensions/footer-custom.ts');
+const mod = jiti('~/.pi/pi-dotfiles/extensions/footer-custom.ts');
 // 构造 mockPi(mock registerCommand) → 触发 handler 拿到 setFooter 的 factory
 // 构造 mock ctx (cwd/sessionManager/model/thinkingLevel/getContextUsage) + mock theme/footerData
 // 调 factory() 拿 component，再 component.render(width) 断言输出
@@ -132,7 +132,7 @@ const mod = jiti('~/pi-dotfiles/extensions/footer-custom.ts');
 - **pi 升级后检查**：`components/footer.js` 渲染逻辑若变，复刻版要同步；先 diff 新旧 footer.js 再决定。文档开头记录了版本号 0.84.1。
 - setFooter(undefined) 可恢复默认 footer（`/footer off`）。
 - 不要用 `getBranch()` 代替 `getEntries()` 统计费用（会漏数，与默认 footer 不一致）。
-- 扩展是全局的，修改后 `/reload` 生效；源码改动提交到 pi-dotfiles 仓库并 push，各终端 `pi update --extensions` 同步。
+- 扩展是全局的，修改后 `/reload` 生效；源码改动提交到 pi-dotfiles 仓库并 push，各终端 `git pull` 同步。
 - **初始化时机**：自定义 footer 在 `session_start`（启动/会话切换/reload）时自动应用，无需手动命令；`setMode(ctx, mode, { silent: true })` 静默，不弹通知。
 - **状态文件**：`~/.pi/agent/footer-state.json`（mode + tokEnabled）属用户偏好，无敏感信息、不入库；`PI_FOOTER_STATE` 可覆盖路径（测试/多机同步）。
 - tok/s 为近似口径：依赖 js-tiktoken 的 o200k_base 近似 DeepSeek-V3 tokenizer（中文/混合内容与官方 usage 可能有少量偏差）；若需严格对齐 API 计费，可换官方 `tokenizer.json`（`@huggingface/tokenizers` WASM 加载，7.8MB 资产）。

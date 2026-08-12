@@ -92,4 +92,4 @@ compatibility: <运行时/环境依赖，如 Node>=22、WSL2 镜像模式>
 - pi 无内置 MCP 支持：**不要**尝试把 MCP 配置接入 pi，一律走本模式（skill 内明确写出这一点，避免 agent 走弯路）。
 - 环境依赖写进 `compatibility` 字段与前置条件节（如 WSL2 镜像模式、Chrome 调试端口、目标服务器可达性、代理要求）。
 - 中国境内环境：脚本涉及境外地址时注明代理处理方式（见项目 AGENTS.md 网络章节）。
-- 归属：本机全局 skill 统一由 pi-dotfiles package 管理（仓库 `skills/` 目录，push 后各终端 `pi update --extensions` 同步，遵循 pi-hacks 的登记流程）；项目相关的 skill 才放项目仓库 `.agents/skills/`。
+- 归属：本机全局 skill 统一由 pi-dotfiles package 管理（仓库 `skills/` 目录，local path 安装于 `~/.pi/pi-dotfiles/`，push 后各终端 `git pull` 同步，遵循 pi-hacks 的登记流程）；项目相关的 skill 才放项目仓库 `.agents/skills/`。
