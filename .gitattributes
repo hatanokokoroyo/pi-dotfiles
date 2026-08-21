@@ -1,0 +1,8 @@
+# 强制 LF 换行：覆盖全局 core.autocrlf=true，防止脚本在 checkout 时被转成 CRLF 损坏
+* text=auto
+*.sh text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.md text eol=lf
