@@ -8,7 +8,10 @@ pi agent 自定义配置仓库（纯 pi package：扩展 + skills），用于在
 pi-dotfiles/
 ├── package.json          # pi package 清单：extensions + skills（含 js-tiktoken 依赖）
 ├── extensions/           # 扩展（package 资源）
-│   └── footer-custom.ts  #   footer 自定义：费用人民币/美元 + tok/s 输出速率（命令 /footer）
+│   ├── footer-custom.ts  #   footer 自定义：费用人民币/美元 + tok/s 输出速率（命令 /footer）
+│   └── wsl-win-gui.ts    #   WSL2 操作 Windows GUI：截图/元素树/点击/输入（命令 /win-gui）
+├── scripts/              # 供扩展调用的非 TS 资源（随 package 同步）
+│   └── win-gui/          #   bridge.ps1（Windows 常驻执行层）+ README.md
 ├── skills/               # skills（package 资源）
 │   └── pi-hacks/         #   pi 自身改造索引 skill（SKILL.md + 各改造项文档，含同步机制说明）
 └── setup.sh              # 新终端一键安装：npm install + pi install 本目录
@@ -41,6 +44,13 @@ cd ~/.pi/pi-dotfiles && git pull   # 拉取最新
 ```
 
 `pi update --extensions` 对 local 包无操作，更新天然靠 `git pull`。
+
+## 跨终端可用性（外部脚本）
+
+扩展可以引用 package 内的非 TS 资源。以 `wsl-win-gui` 为例：`scripts/win-gui/bridge.ps1`
+通过 UNC 路径 `\\wsl.localhost\<distro>\home\<user>\.pi\pi-dotfiles\scripts\...` 被
+Windows 侧 PowerShell 直接加载，**不需要拷贝到 Windows 或额外安装步骤**；新终端
+`git clone` + `setup.sh` 后即可用（唯一前提是该终端也在 WSL2 且 Windows 互操作已启用）。
 
 ## git 提交身份
 

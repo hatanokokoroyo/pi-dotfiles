@@ -14,6 +14,7 @@ description: pi agent 自身的自定义与改造知识索引（footer 显示、
 | 改造项 | 触发场景 | 文档 | 状态 |
 | --- | --- | --- | --- |
 | footer 自定义（费用人民币 + tok/s 速率） | 改底部 footer 显示（费用单位/统计项/布局/输出速率） | `footer-customization.md`（本目录） | ✅ 已落地（扩展 `extensions/footer-custom.ts`，命令 `/footer`） |
+| WSL2 操作 Windows GUI（截图/点击/输入） | 需要从 Windows 侧截图、读界面、点按钮、输中文（多显示器） | `win-gui.md`（本目录） | ✅ 已落地（扩展 `extensions/wsl-win-gui.ts` + 桥 `scripts/win-gui/bridge.ps1`，命令 `/win-gui`） |
 
 ## 使用方式
 
@@ -26,6 +27,7 @@ description: pi agent 自身的自定义与改造知识索引（footer 显示、
 - pi-dotfiles 以 **local path** 方式安装（`pi install ~/.pi/pi-dotfiles`），工作副本即包源，pi 不维护第二份克隆；`pi update --extensions` 对该包无操作。
 - 改动流程：改 `~/.pi/pi-dotfiles/` → 扩展 `/reload`（skill 下个会话）验证 → commit + push → 其他终端 `cd ~/.pi/pi-dotfiles && git pull` 同步（扩展改动需 `/reload`）。
 - 依赖（js-tiktoken）在 `~/.pi/pi-dotfiles/node_modules`，package.json 变更后需手动 `npm install`。
+- **外部脚本/资源**：扩展可以引用 package 内的非 TS 资源（如 `scripts/win-gui/bridge.ps1`）。WSL 扩展通过 UNC 路径（`\\wsl.localhost\<distro>\...`）让 Windows 程序直接加载，**无需把脚本拷贝到 Windows 侧**；新终端 `git clone` + `setup.sh` 后即可用。
 - `AGENTS.md`（`~/.pi/agent/AGENTS.md`）与 `settings.json` 不入库，各终端自维护；机器相关文件不入库。
 
 ## 登记新改造
