@@ -341,16 +341,73 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       : undefined;
 
   /**
-   * 工具暴露方式。默认 direct（开箱即用）；设 PI_WIN_GUI_EXPOSURE=codemode 后
-   * 只在 codemode / tool_search 里可见，不再占用每次请求的 tool 列表
-   * （13 个工具的声明约 600 tokens）。
+   * 工具暴露方式，默认 `codemode`：13 个工具不进入常规 tool 列表（省掉每次请求
+   * 约 600+ tokens 的声明），模型写 codemode 脚本按需调用；`codemode` 的
+   * 描述里会按 namespace 列出一份精简索引，脚本还能用 `searchTools()` /
+   * `describeTool()` 精确查找。
+   *
+   * PI_WIN_GUI_EXPOSURE 覆盖：
+   *   codemode（默认）| deferred（codemode 不列，仅 tool_search 找得到）
+   *   direct（回到常规 tool 列表，调试/直连时用）| model-only
    */
-  const exposure: "direct" | "codemode" | "model-only" =
-    process.env.PI_WIN_GUI_EXPOSURE === "codemode"
-      ? "codemode"
-      : process.env.PI_WIN_GUI_EXPOSURE === "model-only"
+  const exposureOverride = process.env.PI_WIN_GUI_EXPOSURE;
+  const exposure: "direct" | "codemode" | "deferred" | "model-only" =
+    exposureOverride === "direct"
+      ? "direct"
+      : exposureOverride === "model-only"
         ? "model-only"
-        : "direct";
+        : exposureOverride === "deferred"
+          ? "deferred"
+          : "codemode";
+
+  // codemode 脚本拿到的结构化结果（有 outputSchema 时 content 之外还发这个）。
+  // 模型直接调用时仍读 content 文本；脚本可以精确取字段而不必解析文本。
+  const RECT_SCHEMA = Type.Object({
+    x: Type.Number(),
+    y: Type.Number(),
+    w: Type.Number(),
+    h: Type.Number(),
+  });
+  const WINDOW_SPEC = Type.Object({
+    hwnd: Type.Optional(Type.String({ description: "窗口句柄（最精确）" })),
+    title: Type.Optional(Type.String({ description: "标题正则" })),
+    process: Type.Optional(Type.String({ description: "进程名正则" })),
+  });
+  const MONITOR_SCHEMA = Type.Object({
+    index: Type.Number(),
+    x: Type.Number(),
+    y: Type.Number(),
+    w: Type.Number(),
+    h: Type.Number(),
+    dpiX: Type.Number(),
+    dpiY: Type.Number(),
+    scale: Type.Number(),
+    primary: Type.Boolean(),
+    device: Type.String(),
+    workArea: RECT_SCHEMA,
+  });
+  const WINDOW_INFO_SCHEMA = Type.Object({
+    hwnd: Type.String(),
+    pid: Type.Number(),
+    process: Type.String(),
+    title: Type.String(),
+    class: Type.String(),
+    rect: RECT_SCHEMA,
+    windowRect: RECT_SCHEMA,
+    monitor: Type.Number(),
+    minimized: Type.Boolean(),
+    foreground: Type.Boolean(),
+    z: Type.Number(),
+  });
+  const NODE_SCHEMA = Type.Object({
+    uid: Type.String(),
+    role: Type.String(),
+    name: Type.String(),
+    rect: RECT_SCHEMA,
+    enabled: Type.Optional(Type.Boolean()),
+    offscreen: Type.Optional(Type.Boolean()),
+    patterns: Type.Optional(Type.Array(Type.String())),
+  });
 
   const namespace = {
     name: "win_gui",
@@ -448,6 +505,15 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
         Type.Boolean({ description: "同时返回可见窗口列表（默认 false）" }),
       ),
     }),
+    outputSchema: Type.Object({
+      psVersion: Type.String(),
+      psEdition: Type.String(),
+      dpiAware: Type.String(),
+      virtualScreen: RECT_SCHEMA,
+      monitorCount: Type.Number(),
+      monitors: Type.Array(MONITOR_SCHEMA),
+      windows: Type.Optional(Type.Array(WINDOW_INFO_SCHEMA)),
+    }),
     async execute(_id, params) {
       const hello = await invoke("hello", {});
       const monitors = (hello.monitors as Array<Record<string, unknown>>) ?? [];
@@ -482,6 +548,15 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text: parts.join("\n") }],
         details: { hello, monitors, windows },
+        structuredContent: {
+          psVersion: String(hello.psVersion),
+          psEdition: String(hello.psEdition),
+          dpiAware: String(hello.dpiAware),
+          virtualScreen: virtualScreen as unknown as Record<string, number>,
+          monitorCount: Number(hello.monitorCount),
+          monitors: monitors as unknown as Array<Record<string, unknown>>,
+          ...(windows ? { windows } : {}),
+        },
       };
     },
   });
@@ -500,6 +575,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       process: Type.Optional(Type.String({ description: "进程名正则，如 chrome、Code、WXWork" })),
       all: Type.Optional(Type.Boolean({ description: "包含无标题窗口（默认 false）" })),
       limit: Type.Optional(Type.Number({ description: "最多返回条数，默认 40" })),
+    }),
+    outputSchema: Type.Object({
+      total: Type.Number(),
+      returned: Type.Number(),
+      windows: Type.Array(WINDOW_INFO_SCHEMA),
     }),
     async execute(_id, params) {
       const args: Record<string, unknown> = {};
@@ -528,6 +608,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text }],
         details: { windows: shown, total: windows.length },
+        structuredContent: {
+          total: windows.length,
+          returned: shown.length,
+          windows: shown as unknown as Array<Record<string, unknown>>,
+        },
       };
     },
   });
@@ -539,12 +624,12 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
     exposure,
     description:
       "把 Windows 窗口切到前台并取消最小化。用于点击/输入前确保目标窗口在最前（点击类工具本身也会自动置前，一般无需单独调用）。返回是否成功抢到前台。",
-    parameters: Type.Object({
-      window: Type.Object({
-        hwnd: Type.Optional(Type.String({ description: "窗口句柄（最精确）" })),
-        title: Type.Optional(Type.String({ description: "标题正则" })),
-        process: Type.Optional(Type.String({ description: "进程名正则" })),
-      }),
+    parameters: Type.Object({ window: WINDOW_SPEC }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      hwnd: Type.String(),
+      title: Type.String(),
+      foreground: Type.String(),
     }),
     async execute(_id, params) {
       const result = await invoke("focus", { window: params.window });
@@ -556,6 +641,12 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
           },
         ],
         details: result,
+        structuredContent: {
+          ok: Boolean(result.ok),
+          hwnd: String(result.hwnd ?? ""),
+          title: String(result.title ?? ""),
+          foreground: String(result.foreground ?? ""),
+        },
       };
     },
   });
@@ -570,16 +661,21 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
     description:
       "读取窗口的 UIA 元素树，返回 {uid, role, name, rect, patterns} 列表。这是**定位控件的首选方式**：比截图省 token 且能直接点击。uid 可在 win_click / win_type / win_read 中复用（仅在当前 bridge 进程内有效）。多显示器下 rect 是全局物理像素坐标。",
     parameters: Type.Object({
-      window: Type.Object({
-        hwnd: Type.Optional(Type.String({ description: "窗口句柄" })),
-        title: Type.Optional(Type.String({ description: "标题正则" })),
-        process: Type.Optional(Type.String({ description: "进程名正则" })),
-      }),
+      window: WINDOW_SPEC,
       name: Type.Optional(Type.String({ description: "按名称正则过滤（服务端过滤，省返回量）" })),
       role: Type.Optional(Type.String({ description: "按角色过滤，如 Button|Edit|Text|Hyperlink" })),
       maxNodes: Type.Optional(Type.Number({ description: "最多返回节点数，默认 120" })),
       includeOffscreen: Type.Optional(Type.Boolean({ description: "包含屏幕外/零尺寸元素（默认 false）" })),
       patterns: Type.Optional(Type.Boolean({ description: "附带每个元素支持的 UIA pattern（默认 true）" })),
+    }),
+    outputSchema: Type.Object({
+      hwnd: Type.String(),
+      title: Type.String(),
+      rect: RECT_SCHEMA,
+      visited: Type.Number(),
+      truncated: Type.Boolean(),
+      count: Type.Number(),
+      nodes: Type.Array(NODE_SCHEMA),
     }),
     async execute(_id, params) {
       const snap = await invoke("snapshot", {
@@ -604,6 +700,15 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text: `${header}\n${lines.join("\n")}` }],
         details: snap,
+        structuredContent: {
+          hwnd: String(snap.hwnd ?? ""),
+          title: String(snap.title ?? ""),
+          rect: rect as unknown as Record<string, number>,
+          visited: Number(snap.visited ?? 0),
+          truncated: Boolean(snap.truncated),
+          count: nodes.length,
+          nodes: nodes as unknown as Array<Record<string, unknown>>,
+        },
       };
     },
   });
@@ -617,14 +722,16 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       "读取控件或窗口的文本内容（UIA ValuePattern / TextPattern）。用于校验输入结果、读取页面文字。注意 UIA 文本有滞后：刚输入完立刻读可能偏短，可稍等再读。",
     parameters: Type.Object({
       uid: Type.Optional(Type.String({ description: "元素 uid（来自 win_snapshot）" })),
-      window: Type.Optional(
-        Type.Object({
-          hwnd: Type.Optional(Type.String()),
-          title: Type.Optional(Type.String()),
-          process: Type.Optional(Type.String()),
-        }),
-      ),
+      window: Type.Optional(WINDOW_SPEC),
       limit: Type.Optional(Type.Number({ description: "最大字符数，默认 4000" })),
+    }),
+    outputSchema: Type.Object({
+      source: Type.String(),
+      value: Type.Optional(Type.String()),
+      text: Type.Optional(Type.String()),
+      content: Type.String(),
+      length: Type.Number(),
+      rect: RECT_SCHEMA,
     }),
     async execute(_id, params) {
       if (!params.uid && !params.window) {
@@ -648,6 +755,14 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
           },
         ],
         details: result,
+        structuredContent: {
+          source: String(result.source ?? ""),
+          ...(value ? { value } : {}),
+          ...(text ? { text } : {}),
+          content: chosen,
+          length: chosen.length,
+          rect: (result.rect ?? { x: 0, y: 0, w: 0, h: 0 }) as Record<string, number>,
+        },
       };
     },
   });
@@ -665,13 +780,7 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       target: Type.Optional(
         Type.String({ description: "window（默认）| monitor | region | full" }),
       ),
-      window: Type.Optional(
-        Type.Object({
-          hwnd: Type.Optional(Type.String()),
-          title: Type.Optional(Type.String()),
-          process: Type.Optional(Type.String()),
-        }),
-      ),
+      window: Type.Optional(WINDOW_SPEC),
       monitor: Type.Optional(Type.Number({ description: "显示器序号（target=monitor），从 win_env 获取" })),
       region: Type.Optional(
         Type.Object(
@@ -690,6 +799,24 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       ),
       format: Type.Optional(Type.String({ description: "png（默认）| jpeg" })),
       forceScreen: Type.Optional(Type.Boolean({ description: "跳过 PrintWindow，直接屏幕拷贝" })),
+    }),
+    // codemode 里图片用 image(result.image) 输出；这里同时给路径与坐标换算参数
+    outputSchema: Type.Object({
+      path: Type.String(),
+      localPath: Type.String(),
+      method: Type.String(),
+      blank: Type.Boolean(),
+      raisedWindow: Type.Boolean(),
+      width: Type.Number(),
+      height: Type.Number(),
+      sourceWidth: Type.Number(),
+      sourceHeight: Type.Number(),
+      scale: Type.Number(),
+      origin: RECT_SCHEMA,
+      captureRect: RECT_SCHEMA,
+      monitor: Type.Number(),
+      image: Type.Object({ type: Type.String(), data: Type.String(), mimeType: Type.String() }),
+      warning: Type.Optional(Type.String()),
     }),
     async execute(_id, params) {
       mkdirSync(SHOT_DIR, { recursive: true });
@@ -737,6 +864,23 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
           image,
         ],
         details: { ...result, localPath },
+        structuredContent: {
+          path: savedPath,
+          localPath,
+          method: String(result.method ?? ""),
+          blank: Boolean(result.blank),
+          raisedWindow: Boolean(result.raisedWindow),
+          width: Number(result.width ?? 0),
+          height: Number(result.height ?? 0),
+          sourceWidth: Number(result.sourceWidth ?? 0),
+          sourceHeight: Number(result.sourceHeight ?? 0),
+          scale,
+          origin: origin as Record<string, number>,
+          captureRect: captureRect as Record<string, number>,
+          monitor: Number(result.monitor ?? -1),
+          image: { type: "image", data: image.data, mimeType: image.mimeType },
+          ...(result.warning ? { warning: String(result.warning) } : {}),
+        },
       };
     },
   });
@@ -752,13 +896,7 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       "点击 Windows 界面元素。优先传 uid（来自 win_snapshot，点击其中心）；也可传 window+rx/ry（窗口内相对坐标，适合 canvas/画布这类无元素的目标）或全局 x/y。会按需把目标窗口置前，并在点击后回报光标实际落点与所在窗口，便于校验点错没。",
     parameters: Type.Object({
       uid: Type.Optional(Type.String({ description: "元素 uid" })),
-      window: Type.Optional(
-        Type.Object({
-          hwnd: Type.Optional(Type.String()),
-          title: Type.Optional(Type.String()),
-          process: Type.Optional(Type.String()),
-        }),
-      ),
+      window: Type.Optional(WINDOW_SPEC),
       x: Type.Optional(Type.Number({ description: "全局物理像素 X" })),
       y: Type.Optional(Type.Number({ description: "全局物理像素 Y" })),
       rx: Type.Optional(Type.Number({ description: "窗口内相对 X（配 window 使用）" })),
@@ -769,6 +907,17 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       dy: Type.Optional(Type.Number({ description: "相对偏移 Y（微调）" })),
       method: Type.Optional(
         Type.String({ description: "mouse（默认，真实鼠标）| uia-invoke（直接触发元素默认动作，不移动鼠标）" }),
+      ),
+    }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      method: Type.String(),
+      x: Type.Number(),
+      y: Type.Number(),
+      button: Type.Optional(Type.Number()),
+      count: Type.Optional(Type.Number()),
+      cursor: Type.Optional(
+        Type.Object({ x: Type.Number(), y: Type.Number(), hwnd: Type.String(), title: Type.String() }),
       ),
     }),
     async execute(_id, params) {
@@ -796,6 +945,15 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text }],
         details: result,
+        structuredContent: {
+          ok: Boolean(result.ok),
+          method: String(result.method ?? ""),
+          x: Number(result.x ?? 0),
+          y: Number(result.y ?? 0),
+          ...(typeof result.button === "number" ? { button: result.button } : {}),
+          ...(typeof result.count === "number" ? { count: result.count } : {}),
+          ...(cursor ? { cursor: cursor as Record<string, unknown> } : {}),
+        },
       };
     },
   });
@@ -810,13 +968,7 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
     parameters: Type.Object({
       text: Type.String({ description: "要输入的文本" }),
       uid: Type.Optional(Type.String({ description: "目标输入控件 uid（会先点击聚焦）" })),
-      window: Type.Optional(
-        Type.Object({
-          hwnd: Type.Optional(Type.String()),
-          title: Type.Optional(Type.String()),
-          process: Type.Optional(Type.String()),
-        }),
-      ),
+      window: Type.Optional(WINDOW_SPEC),
       method: Type.Optional(
         Type.String({ description: "paste（默认）| unicode | value" }),
       ),
@@ -825,6 +977,14 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       ),
       replace: Type.Optional(Type.Boolean({ description: "先全选（Ctrl+A）覆盖原内容，默认 false" })),
       enter: Type.Optional(Type.Boolean({ description: "输入后回车，默认 false" })),
+    }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      method: Type.String(),
+      length: Type.Number(),
+      observedLength: Type.Optional(Type.Number()),
+      value: Type.Optional(Type.String()),
+      warning: Type.Optional(Type.String()),
     }),
     async execute(_id, params) {
       const result = await invoke("type", {
@@ -845,6 +1005,14 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text: notes.join("；") }],
         details: result,
+        structuredContent: {
+          ok: Boolean(result.ok),
+          method: String(result.method ?? ""),
+          length: Number(result.length ?? 0),
+          ...(typeof result.observedLength === "number" ? { observedLength: result.observedLength } : {}),
+          ...(typeof result.value === "string" ? { value: result.value } : {}),
+          ...(result.warning ? { warning: String(result.warning) } : {}),
+        },
       };
     },
   });
@@ -858,14 +1026,13 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       '发送按键或组合键到前台窗口，如 "Ctrl+S"、"Enter"、"Alt+F4"、"F5"、"Ctrl+Shift+T"。可用 win_focus 或传 window 先置前。repeat 可连按。',
     parameters: Type.Object({
       keys: Type.String({ description: '组合键，用 + 连接，如 "Ctrl+A"' }),
-      window: Type.Optional(
-        Type.Object({
-          hwnd: Type.Optional(Type.String()),
-          title: Type.Optional(Type.String()),
-          process: Type.Optional(Type.String()),
-        }),
-      ),
+      window: Type.Optional(WINDOW_SPEC),
       repeat: Type.Optional(Type.Number({ description: "重复次数，默认 1" })),
+    }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      keys: Type.String(),
+      repeat: Type.Number(),
     }),
     async execute(_id, params) {
       const result = await invoke("key", {
@@ -881,6 +1048,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
           },
         ],
         details: result,
+        structuredContent: {
+          ok: Boolean(result.ok),
+          keys: String(result.keys ?? params.keys),
+          repeat: Number(result.repeat ?? 1),
+        },
       };
     },
   });
@@ -899,6 +1071,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       y2: Type.Number({ description: "终点 Y" }),
       steps: Type.Optional(Type.Number({ description: "插值步数，默认 18" })),
     }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      from: Type.Array(Type.Number()),
+      to: Type.Array(Type.Number()),
+    }),
     async execute(_id, params) {
       const result = await invoke("drag", params as Record<string, unknown>);
       return {
@@ -909,6 +1086,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
           },
         ],
         details: result,
+        structuredContent: {
+          ok: Boolean(result.ok),
+          from: [params.x1, params.y1],
+          to: [params.x2, params.y2],
+        },
       };
     },
   });
@@ -926,6 +1108,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       x: Type.Optional(Type.Number({ description: "滚动前把光标移到此处 X" })),
       y: Type.Optional(Type.Number({ description: "滚动前把光标移到此处 Y" })),
     }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      direction: Type.String(),
+      notches: Type.Number(),
+    }),
     async execute(_id, params) {
       const result = await invoke("scroll", {
         direction: params.direction ?? "down",
@@ -941,6 +1128,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
           },
         ],
         details: result,
+        structuredContent: {
+          ok: Boolean(result.ok),
+          direction: String(result.direction ?? ""),
+          notches: Number(result.notches ?? 0),
+        },
       };
     },
   });
@@ -956,6 +1148,11 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       get: Type.Optional(Type.Boolean({ description: "读取当前剪贴板（默认 true，除非指定了 set）" })),
       set: Type.Optional(Type.String({ description: "写入该文本" })),
     }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      text: Type.String(),
+      length: Type.Number(),
+    }),
     async execute(_id, params) {
       const result = await invoke("clipboard", { set: params.set });
       const text = String(result.text ?? "");
@@ -965,6 +1162,7 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text: notes.join("\n") }],
         details: { ...result, text: text.slice(0, 8000) },
+        structuredContent: { ok: Boolean(result.ok), text: text.slice(0, 8000), length: text.length },
       };
     },
   });
@@ -977,14 +1175,16 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
     description:
       "轮询等待窗口中出现匹配的元素（按名称/角色正则），用于等页面加载、弹窗、loading 结束。返回匹配到的元素（含 uid 可直接点击）。",
     parameters: Type.Object({
-      window: Type.Object({
-        hwnd: Type.Optional(Type.String()),
-        title: Type.Optional(Type.String()),
-        process: Type.Optional(Type.String()),
-      }),
+      window: WINDOW_SPEC,
       name: Type.Optional(Type.String({ description: "元素名称正则" })),
       role: Type.Optional(Type.String({ description: "元素角色过滤" })),
       timeout: Type.Optional(Type.Number({ description: "超时毫秒，默认 5000" })),
+    }),
+    outputSchema: Type.Object({
+      ok: Type.Boolean(),
+      waited: Type.Boolean(),
+      count: Type.Number(),
+      nodes: Type.Array(NODE_SCHEMA),
     }),
     async execute(_id, params) {
       const result = await invoke("wait", {
@@ -998,6 +1198,7 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text" as const, text: `等待超时（${params.timeout ?? 5000} ms）内未出现匹配元素` }],
           details: result,
+          structuredContent: { ok: true, waited: false, count: 0, nodes: [] },
         };
       }
       const lines = nodes.slice(0, 20).map((n) => {
@@ -1007,6 +1208,12 @@ export default function wslWinGuiExtension(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text: `已出现 ${nodes.length} 个匹配元素：\n${lines.join("\n")}` }],
         details: result,
+        structuredContent: {
+          ok: true,
+          waited: true,
+          count: nodes.length,
+          nodes: nodes as unknown as Array<Record<string, unknown>>,
+        },
       };
     },
   });

@@ -41,6 +41,37 @@
 
 扩展在 `detectWsl()` 阶段检查 `WSL_DISTRO_NAME` + `/proc/sys/fs/binfmt_misc/WSLInterop`，不满足则全部工具报"当前不是 WSL2"。原生 Windows pi 用内置 `powershell` 工具即可，无需本扩展。
 
+## 工具暴露方式（默认 codemode）
+
+13 个工具默认 `exposure: "codemode"`：**不进常规 tool 列表**，省掉每次请求约 600+ tokens 的声明；模型写 codemode 脚本按需调用，`codemode` 描述里会按 `win_gui` namespace 给一份精简索引，脚本还能 `searchTools()` / `describeTool()` 精确查。
+
+每个工具都声明了 `outputSchema` 并返回 `structuredContent`，脚本拿到的是**结构化字段**而不是要正则解析的文本，例如：
+
+```js
+const env = await tools.win_env({});
+env.monitorCount            // 3
+env.virtualScreen.w         // 7040（不用解析 "虚拟桌面：7040x1440"）
+
+const { windows } = await tools.win_windows({ process: "chrome" });
+windows[0].rect.x           // 0
+windows[0].foreground       // false
+
+const shot = await tools.win_screenshot({ window: { title: "Pixso" }, maxDim: 800 });
+image(shot.image);          // 图片走 image() 输出
+text(shot.origin, shot.scale);
+```
+
+用 `PI_WIN_GUI_EXPOSURE` 覆盖（无需改代码）：
+
+| 值 | 行为 |
+| --- | --- |
+| 不设 / `codemode` | **默认**。不进常规列表，codemode 描述里按 namespace 列出 |
+| `deferred` | 连 codemode 也不列，只能用 `searchTools()` 找到（工具很多时最省） |
+| `direct` | 回到常规 tool 列表，可直接单独调用（调试时用） |
+| `model-only` | 声明给模型但禁止被 script 调用 |
+
+注意：`pi -p --tools "*"` 会把所有工具（含 codemode 暴露的）显式激活，**不能用它验证默认是否进列表**；要用不带 `--tools` 的默认会话验证。
+
 ## 实现结构
 
 ```
@@ -103,7 +134,8 @@ UIA 残废（canvas / 老控件）→ 截图 + 像素坐标点击
 | 想改什么 | 改哪里 |
 | --- | --- |
 | 加新 op | `bridge.ps1` 的 `Invoke-Op` switch + 扩展 `pi.registerTool` |
-| 加新工具 | `extensions/wsl-win-gui.ts` |
+| 加新工具 | `extensions/wsl-win-gui.ts`（记得同时补 `outputSchema` + `structuredContent`） |
+| 改默认暴露方式 | `exposure` 常量（当前默认 `codemode`） |
 | 调输入默认方式 | `bridge.ps1` `'type'` 分支的 `$method` 默认值 |
 | 调截图默认缩放 | `win_screenshot` 的 `maxDim`（默认 1600） |
 | 换 PowerShell 路径 | `detectWsl()` 的 `pwsh7Paths` |

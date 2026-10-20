@@ -83,3 +83,16 @@ printf '%s\n' '{"id":1,"op":"hello","args":{}}' '{"id":2,"op":"shutdown","args":
 ```
 
 pi 内用 `/win-gui status | start | stop | monitors` 管理进程。
+
+## 工具暴露方式
+
+13 个工具默认 `exposure: "codemode"`（不进常规 tool 列表，省 context），
+且都声明了 `outputSchema`，codemode 脚本拿到 `structuredContent` 结构化字段：
+
+```js
+const { monitorCount, virtualScreen } = await tools.win_env({});
+const shot = await tools.win_screenshot({ window: { title: "Pixso" } });
+image(shot.image);
+```
+
+`PI_WIN_GUI_EXPOSURE` 可切到 `direct`（常规列表，调试用）/ `deferred`（仅 tool_search 可见）/ `model-only`。
